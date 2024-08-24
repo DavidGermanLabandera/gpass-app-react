@@ -227,7 +227,7 @@ const Table = <T extends {}>({
 									const url = window.URL.createObjectURL(blob);
 									const a = document.createElement('a');
 									a.href = url;
-									a.download = `Ticket-${t.number}`;
+									a.download = `Ticket-${t?.userAmbassadorName}-#${t.number}`;
 									a.click();
 									a.remove();
 
@@ -271,7 +271,7 @@ const Table = <T extends {}>({
 				},
 			}
 		];
-	}, [columnsProp, pathEdit, collection, removeTableActions, downloadPdf, imageEventUrl, setData, path, deleteUser, user?.displayName]);
+	}, [columnsProp, pathEdit, collection, removeTableActions, downloadPdf, imageEventUrl, setData, path, deleteUser, user]);
 
 	return (
 		<div>

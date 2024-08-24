@@ -6,14 +6,21 @@ import { Button, Form, Input, Row, Table as TableAnt, TableColumnsType, message 
 import { ColumnsType } from "antd/es/table";
 import { QueryConstraint, orderBy, where, writeBatch } from "firebase/firestore";
 import FormItem from "antd/es/form/FormItem";
-import { DeleteOutlined } from "@ant-design/icons";
+import { DeleteOutlined, ExportOutlined } from "@ant-design/icons";
 import { Rule } from "antd/es/form";
 import { getCollection, getGenericDocById, update } from "../../../services/firebase";
 import Table from "../../../components/table";
 import { db } from "../../../firebaseConfig";
+import * as XLSX from 'xlsx';
 
 type EventAssign = Omit<Event, "ambassadorsRanges"> & {
   ambassadorsRanges: AmbassadorRanges[];
+}
+
+type UserData = {
+  Nombre: string;
+  Correo: string;
+  [key: string]: string | undefined; // Esto permite añadir rangos dinámicos
 }
 
 const AssignTickets = () => {
@@ -371,6 +378,73 @@ const AssignTickets = () => {
     }
   }
 
+  const handleExport = () => {
+    // Prepare the data for export
+    const userData: UserData[] = users.map(user => ({
+      Nombre: user.name,
+      Correo: user.email,
+      ...event?.ambassadorsRanges
+        .filter(range => range.userAmbassadorId === user.id)
+        .flatMap(range => range.ranges.map(r => ({
+          [`Rango ${r.index} Inicio`]: r.startRange?.toString(),
+          [`Rango ${r.index} Fin`]: r.endRange?.toString(),
+        })))
+        .reduce((acc, cur) => ({ ...acc, ...cur }), {})
+    }));
+
+    // Create a worksheet from the user data
+    const wsUsers = XLSX.utils.json_to_sheet(userData, { skipHeader: false });
+
+    // Create cell styles
+    const cellStyles = {
+      centerBold: { alignment: { horizontal: "center" }, font: { bold: true } },
+      textAlignLeft: { alignment: { horizontal: "left" } },
+    };
+
+    // Apply styles to the cells
+    const rangeCells = (ws: XLSX.WorkSheet) => {
+      Object.keys(ws).forEach(cell => {
+        if (cell[0] === '!') return; // Skip special keys
+        const cellAddress = XLSX.utils.decode_cell(cell);
+        const cellValue = ws[cell]?.v;
+
+        if (cellValue && cellAddress.c > 1) { // Only apply to range cells
+          ws[cell].s = cellAddress.c % 2 === 0 ? cellStyles.centerBold : cellStyles.textAlignLeft;
+        }
+      });
+    };
+
+    // Adjust column widths based on the data
+    const adjustColumnWidths = (ws: XLSX.WorkSheet) => {
+      const columnWidths: { [key: string]: number } = {};
+      Object.keys(ws).forEach(cell => {
+        if (cell[0] === '!') return; // Skip special keys
+        const cellAddress = XLSX.utils.decode_cell(cell);
+        const cellValue = ws[cell]?.v;
+        const col = cellAddress.c;
+        if (typeof cellValue === 'string') {
+          columnWidths[col] = Math.max(columnWidths[col] || 10, cellValue.length);
+        }
+      });
+
+      const wsCols = Object.keys(columnWidths).map(col => ({
+        wch: columnWidths[col] + 2 // Adding some padding
+      }));
+      ws['!cols'] = wsCols;
+    };
+
+    // Apply styles and adjust column widths
+    rangeCells(wsUsers);
+    adjustColumnWidths(wsUsers);
+
+    // Create a new workbook and add the worksheet to it
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, wsUsers, 'Usuarios');
+
+    const filename = `${event?.name}-Embajadores.xlsx`;
+    XLSX.writeFile(wb, filename); // Cambié el nombre del archivo aquí
+  }
+
   return (
     <>
       <HeaderView
@@ -384,6 +458,14 @@ const AssignTickets = () => {
         onFinish={onFinish}
       >
         <Button loading={saving} type="primary" htmlType="submit">Asignar embajadores</Button>
+        <Button
+          type="default"
+          icon={<ExportOutlined />}
+          onClick={handleExport}
+          style={{ marginLeft: '10px', backgroundColor: '#107C41', color: '#fff' }} // Cambié el color del botón aquí
+        >
+          Exportar a Excel
+        </Button>
         <br />
         <br />
         <Table

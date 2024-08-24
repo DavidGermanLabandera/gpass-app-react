@@ -8,8 +8,10 @@ import { useLocation } from "react-router-dom"
 import dayjs from "dayjs"
 import { QRCodeCanvas } from "qrcode.react"
 import useCollection, { PropsUseCollection } from "../../../hooks/useCollection"
-import { Form } from "antd"
+import { Button, Form } from "antd"
 import { useAuth } from "../../../context/authContext"
+import { ExportOutlined } from '@ant-design/icons';
+import * as XLSX from 'xlsx';
 
 interface TicketTable extends Ticket {
   ticketUrl?: string;
@@ -128,6 +130,52 @@ const Tickets = () => {
     onLoadData: setTickets
   }), [event, columns, loading, query]);
 
+  const handleExport = () => {
+    // Prepare the data for export
+    const ticketData = tickets.map(ticket => ({
+      Número: ticket.number,
+      Escaneado: ticket.isScanned,
+      "Usuario escaner": ticket.userScannerName || "",
+      "Fecha escaneado": ticket.dateScanned ? dayjs(ticket.dateScanned).format("DD/MM/YYYY hh:mm a") : "",
+      "Embajador": users.find(u => u.id === ticket.userAmbassadorId)?.name || "",
+    }));
+  
+    // Create a worksheet from the ticket data
+    const wsTickets = XLSX.utils.json_to_sheet(ticketData);
+  
+    // Helper function to get the maximum length of content for a column
+    const getMaxLength = (data: any[], key: string): number => {
+      return Math.max(
+        ...data.map(row => (row[key]?.toString().length || 0)),
+        key.length
+      );
+    };
+  
+    // Define column widths based on the data
+    const columnWidths: { [key: string]: number } = {
+      Número: getMaxLength(ticketData, 'Número'),
+      Escaneado: getMaxLength(ticketData, 'Escaneado'),
+      "Usuario escaner": getMaxLength(ticketData, 'Usuario escaner'),
+      "Fecha escaneado": getMaxLength(ticketData, 'Fecha escaneado'),
+      Embajador: getMaxLength(ticketData, 'Embajador'),
+    };
+  
+    // Set column widths for the worksheet
+    wsTickets['!cols'] = Object.keys(columnWidths).map(key => ({
+      width: columnWidths[key] + 2 // Add some padding
+    }));
+  
+    // Generate a new workbook and append the worksheet
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, wsTickets, 'Tickets');
+  
+    // Generate the file name
+    const filename = `${event?.name}-Tickets.xlsx`;
+  
+    // Export the workbook to a file
+    XLSX.writeFile(wb, filename);
+  };  
+
   return (
     <div style={{ margin: 20 }}>
       <HeaderView
@@ -135,6 +183,16 @@ const Tickets = () => {
         title={`Tickets ${event?.name}`}
         goBack
       />
+       <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center' }}>
+        <Button
+          type="default"
+          icon={<ExportOutlined />}
+          onClick={handleExport}
+          style={{ backgroundColor: '#107C41', color: '#fff' }}
+        >
+          Exportar a Excel
+        </Button>
+      </div>
       <Table {...propsTable} />
     </div>
   )
